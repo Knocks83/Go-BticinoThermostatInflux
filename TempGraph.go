@@ -1,7 +1,7 @@
 package main
 
 import (
-	"TempGraph/config"
+	"Go-BticinoThermostatInflux/config"
 	"bufio"
 	"encoding/json"
 	"fmt"
