@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -114,8 +115,6 @@ func getRefreshCode(accessToken string) (refreshToken string) {
 	json.Unmarshal(body, &token)
 	refreshToken = token.RefreshToken
 
-	fmt.Println(string(body))
-
 	// Write it in the file
 	err = ioutil.WriteFile(config.RefreshFileName, []byte(refreshToken), 0700)
 
@@ -187,7 +186,7 @@ func auth() (accessToken string) {
 	return accessToken
 }
 
-func getThermostatStatus(accessToken string, plantID string, moduleID string) (temperature string, humidity string, status bool) {
+func getThermostatStatus(accessToken string, plantID string, moduleID string) (temperature float64, humidity float64, status bool) {
 	// Generate URL and make the GET request
 	url := config.APIEndpoint + "chronothermostat/thermoregulation/addressLocation/plants/" + plantID + "/modules/parameter/id/value/" + moduleID
 
@@ -220,8 +219,8 @@ func getThermostatStatus(accessToken string, plantID string, moduleID string) (t
 	}
 
 	// Extract the needed data from the struct
-	temperature = thermostat.Devices[0].Thermometer.Measures[0].Value
-	humidity = thermostat.Devices[0].Hygrometer.Measures[0].Value
+	temperature, _ = strconv.ParseFloat(thermostat.Devices[0].Thermometer.Measures[0].Value, 64)
+	humidity, _ = strconv.ParseFloat(thermostat.Devices[0].Hygrometer.Measures[0].Value, 64)
 
 	if thermostat.Devices[0].LoadState == "ACTIVE" { // When the LoadState is "ACTIVE", then the thermostat is heating
 		status = true
