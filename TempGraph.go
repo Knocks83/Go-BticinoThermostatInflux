@@ -241,8 +241,6 @@ func main() {
 	sigtermHandler(client)
 
 	for true {
-		fmt.Println("Loop!")
-
 		// Authenticate and get data
 		accessToken := auth()
 		temperature, humidity, status := getThermostatStatus(accessToken, config.PlantID, config.ModuleID)
