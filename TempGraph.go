@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -115,8 +116,19 @@ func getRefreshCode(accessToken string) (refreshToken string) {
 	json.Unmarshal(body, &token)
 	refreshToken = token.RefreshToken
 
-	// Write it in the file
-	err = ioutil.WriteFile(config.RefreshFileName, []byte(refreshToken), 0700)
+	// Set the Refresh File path as the one in the config
+	refreshPath := config.RefreshFileName
+	// But if the config says it should calculate the absolute path, replace the saved value
+	if config.CalculateAbsolutePath {
+		ex, err := os.Executable()
+		if err != nil {
+			panic(err)
+		}
+		refreshPath = filepath.Dir(ex) + "/" + config.RefreshFileName
+	}
+
+	// Write the token file
+	err = ioutil.WriteFile(refreshPath, []byte(refreshToken), 0700)
 
 	// Handle errors while writing the file
 	if err != nil {
@@ -152,8 +164,19 @@ func refreshTokenFlow(refreshToken string) (updatedRefreshToken string, accessTo
 	updatedRefreshToken = token.RefreshToken
 	accessToken = token.AccessToken
 
-	// Write it in the file
-	err = ioutil.WriteFile(config.RefreshFileName, []byte(updatedRefreshToken), 0700)
+	// Set the Refresh File path as the one in the config
+	refreshPath := config.RefreshFileName
+	// But if the config says it should calculate the absolute path, replace the saved value
+	if config.CalculateAbsolutePath {
+		ex, err := os.Executable()
+		if err != nil {
+			panic(err)
+		}
+		refreshPath = filepath.Dir(ex) + "/" + config.RefreshFileName
+	}
+
+	// Write the refresh file
+	err = ioutil.WriteFile(refreshPath, []byte(refreshToken), 0700)
 
 	// Handle errors while writing the file
 	if err != nil {
@@ -164,22 +187,37 @@ func refreshTokenFlow(refreshToken string) (updatedRefreshToken string, accessTo
 }
 
 func auth() (accessToken string) {
-	if _, err := os.Stat(config.RefreshFileName); err == nil {
+	// Set the Refresh File path as the one in the config
+	refreshPath := config.RefreshFileName
+	// But if the config says it should calculate the absolute path, replace the saved value
+	if config.CalculateAbsolutePath {
+		ex, err := os.Executable()
+		if err != nil {
+			panic(err)
+		}
+		refreshPath = filepath.Dir(ex) + "/" + config.RefreshFileName
+	}
+
+	if _, err := os.Stat(refreshPath); err == nil {
 		// If there's a refresh.txt file, try to use that refresh token
-		fileData, err := ioutil.ReadFile(config.RefreshFileName)
+		fileData, err := ioutil.ReadFile(refreshPath)
 
 		// Handle eventual error
 		if err != nil {
 			panic("Unable to read file")
 		}
+
+		// Sanitize the file
 		refreshToken := strings.TrimSpace(string(fileData))
 
 		refreshToken, accessToken = refreshTokenFlow(refreshToken)
 		if refreshToken == "" || accessToken == "" {
+			// If you're here it means the refresh token in the file is invalid
 			accessToken = getAuthToken()
 			getRefreshCode(accessToken)
 		}
 	} else {
+		// If you're here it means you don't have a refresh token file
 		accessToken = getAuthToken()
 		getRefreshCode(accessToken)
 	}
@@ -218,11 +256,17 @@ func getThermostatStatus(accessToken string, plantID string, moduleID string) (t
 		panic(err)
 	}
 
+	// If the APIs don't give us what we want, return the error values
+	if len(thermostat.Devices) == 0 {
+		return -1, -1, false
+	}
+
 	// Extract the needed data from the struct
 	temperature, _ = strconv.ParseFloat(thermostat.Devices[0].Thermometer.Measures[0].Value, 64)
 	humidity, _ = strconv.ParseFloat(thermostat.Devices[0].Hygrometer.Measures[0].Value, 64)
 
-	if thermostat.Devices[0].LoadState == "ACTIVE" { // When the LoadState is "ACTIVE", then the thermostat is heating
+	// When the LoadState is "ACTIVE" the thermostat is heating
+	if thermostat.Devices[0].LoadState == "ACTIVE" {
 		status = true
 	} else {
 		status = false
@@ -243,6 +287,11 @@ func main() {
 		// Authenticate and get data
 		accessToken := auth()
 		temperature, humidity, status := getThermostatStatus(accessToken, config.PlantID, config.ModuleID)
+
+		// If the data is invalid, skip them
+		if temperature == -1 || humidity == -1 {
+			continue
+		}
 
 		// Get the current time (to add to the data)
 		relTime := time.Now()

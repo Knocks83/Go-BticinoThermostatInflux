@@ -18,6 +18,11 @@ const (
 	ModuleID        = ""
 )
 
+// Var
+const (
+	CalculateAbsolutePath = true // Whether the software should calculate the executable path (disable if using the `go run filename` syntax)
+)
+
 // DO NOT EDIT ANYTHING UNDER THIS COMMENT IF YOU DON'T KNOW
 // WHAT YOU'RE DOING
 
