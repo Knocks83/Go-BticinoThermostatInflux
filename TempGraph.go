@@ -88,8 +88,8 @@ func sigtermHandler(influx influxdb2.Client) {
 }
 
 func getAuthToken() (authToken string) {
-	fmt.Println("Open the following link in a browser and login. Once logged in, it'll redirect you to google.com?code=<something>. Type in that something")
-	fmt.Println(config.AuthEndpoint + "authorize?client_id=" + config.ClientID + "&response_type=code&redirect_uri=google.com")
+	fmt.Println("Open the following link in a browser and login. Once logged in, it'll redirect you to yourredirect?code=<something>. Type in that something")
+	fmt.Println(config.AuthEndpoint + "authorize?client_id=" + config.ClientID + "&response_type=code&redirect_uri=" + config.Redirect)
 
 	// Read the console input
 	reader := bufio.NewReader(os.Stdin)
