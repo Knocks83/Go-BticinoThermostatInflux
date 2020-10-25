@@ -66,6 +66,14 @@ type GetToken struct {
 	RefreshTokenExpiresIn uint16 `json:"refresh_token_expires_in"`
 }
 
+// Error In case the deviceStatus struct doesn't give us the correct data, we're falling back to this struct that contains the error
+type Error struct {
+	StatusCode   uint16 `json:"statusCode"`
+	ErrorMessage string `json:"message"`
+}
+
+var accessToken string
+
 func sigtermHandler(influx influxdb2.Client) {
 	// Prepare to catch the SIGTERM
 	c := make(chan os.Signal)
@@ -224,7 +232,7 @@ func auth() (accessToken string) {
 	return accessToken
 }
 
-func getThermostatStatus(accessToken string, plantID string, moduleID string) (temperature float64, humidity float64, status bool) {
+func getThermostatStatus(plantID string, moduleID string) (temperature float64, humidity float64, status bool) {
 	// Generate URL and make the GET request
 	url := config.APIEndpoint + "chronothermostat/thermoregulation/addressLocation/plants/" + plantID + "/modules/parameter/id/value/" + moduleID
 
@@ -258,21 +266,62 @@ func getThermostatStatus(accessToken string, plantID string, moduleID string) (t
 
 	// If the APIs don't give us what we want, return the error values
 	if len(thermostat.Devices) == 0 {
-		return -1, -1, false
-	}
+		var apiError Error
+		err = json.Unmarshal(byteValue, &apiError)
+		if err != nil {
+			panic(err)
+		}
+		fmt.Println(apiError.ErrorMessage)
 
-	// Extract the needed data from the struct
-	temperature, _ = strconv.ParseFloat(thermostat.Devices[0].Thermometer.Measures[0].Value, 64)
-	humidity, _ = strconv.ParseFloat(thermostat.Devices[0].Hygrometer.Measures[0].Value, 64)
+		switch apiError.StatusCode {
+		case 401:
+			// Unauthorized, refresh access code
+			// Set the Refresh File path as the one in the config
 
-	// When the LoadState is "ACTIVE" the thermostat is heating
-	if thermostat.Devices[0].LoadState == "ACTIVE" {
-		status = true
+			refreshPath := config.RefreshFileName
+			// But if the config says it should calculate the absolute path, replace the saved value
+			if config.CalculateAbsolutePath {
+				ex, err := os.Executable()
+				if err != nil {
+					panic(err)
+				}
+				refreshPath = filepath.Dir(ex) + "/" + config.RefreshFileName
+			}
+			// If there's a refresh.txt file, try to use that refresh token
+			fileData, err := ioutil.ReadFile(refreshPath)
+
+			// Handle eventual error
+			if err != nil {
+				panic("Unable to read file")
+			}
+
+			// Sanitize the file
+			refreshToken := strings.TrimSpace(string(fileData))
+
+			_, accessToken = refreshTokenFlow(refreshToken)
+			return getThermostatStatus(config.PlantID, config.ModuleID)
+		case 403:
+			// No more API requests. Just return the error values and keep trying until the request quota resets
+			return -1, -1, false
+		default:
+			// Unknown error, just print the error and return the error values
+			fmt.Println(string(byteValue))
+			return -1, -1, false
+		}
 	} else {
-		status = false
-	}
+		// Extract the needed data from the struct
+		temperature, _ = strconv.ParseFloat(thermostat.Devices[0].Thermometer.Measures[0].Value, 64)
+		humidity, _ = strconv.ParseFloat(thermostat.Devices[0].Hygrometer.Measures[0].Value, 64)
 
-	return temperature, humidity, status
+		// When the LoadState is "ACTIVE" the thermostat is heating
+		if thermostat.Devices[0].LoadState == "ACTIVE" {
+			status = true
+		} else {
+			status = false
+		}
+
+		return temperature, humidity, status
+	}
 }
 
 func main() {
@@ -283,13 +332,16 @@ func main() {
 	// Start the SIGTERM handler
 	sigtermHandler(client)
 
+	// First login to set global var accessToken to a working accessToken
+	accessToken = auth()
+
 	for true {
 		// Authenticate and get data
-		accessToken := auth()
-		temperature, humidity, status := getThermostatStatus(accessToken, config.PlantID, config.ModuleID)
+		temperature, humidity, status := getThermostatStatus(config.PlantID, config.ModuleID)
 
 		// If the data is invalid, skip them
 		if temperature == -1 || humidity == -1 {
+			time.Sleep(config.RequestDelay * time.Second)
 			continue
 		}
 
@@ -307,6 +359,6 @@ func main() {
 		writeAPI.WritePoint(p)
 		writeAPI.Flush()
 
-		time.Sleep(15 * time.Second)
+		time.Sleep(config.RequestDelay * time.Second)
 	}
 }
