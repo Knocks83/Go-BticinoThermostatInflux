@@ -13,6 +13,7 @@ const (
 const (
 	ClientID        = ""
 	ClientSecret    = ""
+	Redirect        = ""
 	SubscriptionKey = ""
 	PlantID         = ""
 	ModuleID        = ""
