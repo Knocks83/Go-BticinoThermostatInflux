@@ -335,7 +335,7 @@ func main() {
 	// First login to set global var accessToken to a working accessToken
 	accessToken = auth()
 
-	for true {
+	for {
 		// Authenticate and get data
 		temperature, humidity, status := getThermostatStatus(config.PlantID, config.ModuleID)
 
@@ -349,7 +349,7 @@ func main() {
 		relTime := time.Now()
 
 		// Create the point with all the data
-		p := influxdb2.NewPointWithMeasurement("environment").
+		p := influxdb2.NewPointWithMeasurement(config.InfluxMeasurementName).
 			AddTag("sensorType", "BticinoThermostat").
 			AddTag("sensorID", config.ModuleID).
 			AddField("temperature", temperature).
