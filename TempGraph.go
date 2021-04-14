@@ -246,7 +246,8 @@ func getThermostatStatus(plantID string, moduleID string) (temperature float64, 
 
 	// Handle the eventual error
 	if err != nil {
-		panic(err)
+		fmt.Println(err)
+		return -1, -1, false
 	}
 
 	// Close the response body (Why? Because the docs say so)
