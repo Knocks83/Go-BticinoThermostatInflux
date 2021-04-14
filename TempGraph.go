@@ -269,7 +269,8 @@ func getThermostatStatus(plantID string, moduleID string) (temperature float64, 
 		var apiError Error
 		err = json.Unmarshal(byteValue, &apiError)
 		if err != nil {
-			panic(err)
+			fmt.Println(err)
+			fmt.Println(string(byteValue))
 		}
 		fmt.Println(apiError.ErrorMessage)
 
