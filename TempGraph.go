@@ -68,8 +68,14 @@ type GetToken struct {
 
 // Error In case the deviceStatus struct doesn't give us the correct data, we're falling back to this struct that contains the error
 type Error struct {
-	StatusCode   uint16 `json:"statusCode"`
+	StatusCode   string `json:"statusCode"`
 	ErrorMessage string `json:"message"`
+}
+
+// Error2 Since some errors have a different structure (thanks Legrand) the code has to try both
+type Error2 struct {
+	ErrorMessage string `json:"message"`
+	Code         uint16 `json:"code"`
 }
 
 var accessToken string
@@ -268,47 +274,87 @@ func getThermostatStatus(plantID string, moduleID string) (temperature float64, 
 	// If the APIs don't give us what we want, return the error values
 	if len(thermostat.Devices) == 0 {
 		var apiError Error
+		var apiError2 Error2
 		err = json.Unmarshal(byteValue, &apiError)
 		if err != nil {
-			fmt.Println(err)
-			fmt.Println(string(byteValue))
+			err = json.Unmarshal(byteValue, &apiError2)
+			if err != nil {
+				fmt.Println(string(byteValue))
+			}
 		}
 		fmt.Println(apiError.ErrorMessage)
 
-		switch apiError.StatusCode {
-		case 401:
-			// Unauthorized, refresh access code
-			// Set the Refresh File path as the one in the config
+		if apiError2.ErrorMessage == "" && apiError2.Code == 0 {
+			switch apiError.StatusCode {
+			case "401":
+				// Unauthorized, refresh access code
+				// Set the Refresh File path as the one in the config
 
-			refreshPath := config.RefreshFileName
-			// But if the config says it should calculate the absolute path, replace the saved value
-			if config.CalculateAbsolutePath {
-				ex, err := os.Executable()
-				if err != nil {
-					panic(err)
+				refreshPath := config.RefreshFileName
+				// But if the config says it should calculate the absolute path, replace the saved value
+				if config.CalculateAbsolutePath {
+					ex, err := os.Executable()
+					if err != nil {
+						panic(err)
+					}
+					refreshPath = filepath.Dir(ex) + "/" + config.RefreshFileName
 				}
-				refreshPath = filepath.Dir(ex) + "/" + config.RefreshFileName
+				// If there's a refresh.txt file, try to use that refresh token
+				fileData, err := ioutil.ReadFile(refreshPath)
+
+				// Handle eventual error
+				if err != nil {
+					panic("Unable to read file")
+				}
+
+				// Sanitize the file
+				refreshToken := strings.TrimSpace(string(fileData))
+
+				_, accessToken = refreshTokenFlow(refreshToken)
+				return getThermostatStatus(config.PlantID, config.ModuleID)
+			case "403":
+				// No more API requests. Just return the error values and keep trying until the request quota resets
+				return -1, -1, false
+			case "408":
+				// Timeout, just wait
+				return -1, -1, false
+			default:
+				// Unknown error, just print the error and return the error values
+				fmt.Println(string(byteValue))
+				return -1, -1, false
 			}
-			// If there's a refresh.txt file, try to use that refresh token
-			fileData, err := ioutil.ReadFile(refreshPath)
+		} else {
+			switch apiError2.Code {
+			case 10:
+				// No token, refresh access code
+				// Set the Refresh File path as the one in the config
 
-			// Handle eventual error
-			if err != nil {
-				panic("Unable to read file")
+				refreshPath := config.RefreshFileName
+				// But if the config says it should calculate the absolute path, replace the saved value
+				if config.CalculateAbsolutePath {
+					ex, err := os.Executable()
+					if err != nil {
+						panic(err)
+					}
+					refreshPath = filepath.Dir(ex) + "/" + config.RefreshFileName
+				}
+				// If there's a refresh.txt file, try to use that refresh token
+				fileData, err := ioutil.ReadFile(refreshPath)
+
+				// Handle eventual error
+				if err != nil {
+					panic("Unable to read file")
+				}
+
+				// Sanitize the file
+				refreshToken := strings.TrimSpace(string(fileData))
+
+				_, accessToken = refreshTokenFlow(refreshToken)
+				return getThermostatStatus(config.PlantID, config.ModuleID)
+			default:
+				// Unknown error
+				return -1, -1, false
 			}
-
-			// Sanitize the file
-			refreshToken := strings.TrimSpace(string(fileData))
-
-			_, accessToken = refreshTokenFlow(refreshToken)
-			return getThermostatStatus(config.PlantID, config.ModuleID)
-		case 403:
-			// No more API requests. Just return the error values and keep trying until the request quota resets
-			return -1, -1, false
-		default:
-			// Unknown error, just print the error and return the error values
-			fmt.Println(string(byteValue))
-			return -1, -1, false
 		}
 	} else {
 		// Extract the needed data from the struct
