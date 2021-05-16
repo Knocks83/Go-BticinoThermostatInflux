@@ -351,6 +351,32 @@ func getThermostatStatus(plantID string, moduleID string) (temperature float64, 
 
 				_, accessToken = refreshTokenFlow(refreshToken)
 				return getThermostatStatus(config.PlantID, config.ModuleID)
+			case 11:
+				// Token expired, refresh access code
+				// Set the Refresh File path as the one in the config
+
+				refreshPath := config.RefreshFileName
+				// But if the config says it should calculate the absolute path, replace the saved value
+				if config.CalculateAbsolutePath {
+					ex, err := os.Executable()
+					if err != nil {
+						panic(err)
+					}
+					refreshPath = filepath.Dir(ex) + "/" + config.RefreshFileName
+				}
+				// If there's a refresh.txt file, try to use that refresh token
+				fileData, err := ioutil.ReadFile(refreshPath)
+
+				// Handle eventual error
+				if err != nil {
+					panic("Unable to read file")
+				}
+
+				// Sanitize the file
+				refreshToken := strings.TrimSpace(string(fileData))
+
+				_, accessToken = refreshTokenFlow(refreshToken)
+				return getThermostatStatus(config.PlantID, config.ModuleID)
 			default:
 				// Unknown error
 				return -1, -1, false
