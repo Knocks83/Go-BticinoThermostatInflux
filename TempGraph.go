@@ -105,7 +105,7 @@ func getAuthToken() (authToken string) {
 	return strings.TrimSpace(code)
 }
 
-func getRefreshCode(accessToken string) (refreshToken string) {
+func getRefreshCode(accessToken string) (refreshToken string, newAccessToken string) {
 	// Create POST request payload
 	data := url.Values{
 		"client_id":     {config.ClientID},
@@ -129,6 +129,7 @@ func getRefreshCode(accessToken string) (refreshToken string) {
 	// Parse the JSON body
 	json.Unmarshal(body, &token)
 	refreshToken = token.RefreshToken
+	newAccessToken = token.AccessToken
 
 	// Set the Refresh File path as the one in the config
 	refreshPath := config.RefreshFileName
@@ -149,7 +150,7 @@ func getRefreshCode(accessToken string) (refreshToken string) {
 		fmt.Printf("Unable to write file: %v", err)
 	}
 
-	return refreshToken
+	return refreshToken, newAccessToken
 }
 
 func refreshTokenFlow(refreshToken string) (updatedRefreshToken string, accessToken string) {
@@ -228,12 +229,12 @@ func auth() (accessToken string) {
 		if refreshToken == "" || accessToken == "" {
 			// If you're here it means the refresh token in the file is invalid
 			accessToken = getAuthToken()
-			getRefreshCode(accessToken)
+			refreshToken, accessToken = getRefreshCode(accessToken)
 		}
 	} else {
 		// If you're here it means you don't have a refresh token file
 		accessToken = getAuthToken()
-		getRefreshCode(accessToken)
+		_, accessToken = getRefreshCode(accessToken)
 	}
 	return accessToken
 }
